@@ -69,6 +69,7 @@ export function App() {
     acceptRematch,
     toggleBoardOrientation,
     updatePlayerName,
+    leaveGame,
   } = useChessGame({
     roomCode,
     mode,
@@ -77,7 +78,17 @@ export function App() {
     initialEnablePremoves: allowPremoves,
   });
 
+  const [dismissedGameOver, setDismissedGameOver] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (status === 'active') {
+      setDismissedGameOver(false);
+    }
+  }, [status]);
+
   const handleCreateOnlineGame = (tc: number, color: 'white' | 'black' | 'random', premoves: boolean) => {
+    leaveGame();
+    setDismissedGameOver(false);
     const randomCode = 'CP-' + Math.floor(1000 + Math.random() * 9000);
     setTimeControl(tc);
     setColorPref(color);
@@ -90,6 +101,8 @@ export function App() {
   };
 
   const handleJoinOnlineGame = (code: string) => {
+    leaveGame();
+    setDismissedGameOver(false);
     const cleaned = code.trim().toUpperCase();
     setMode('online');
     setRoomCode(cleaned);
@@ -99,13 +112,18 @@ export function App() {
   };
 
   const handleStartLocalGame = () => {
+    leaveGame();
+    setDismissedGameOver(false);
     setMode('local');
     setRoomCode(null);
     setTimeControl(0);
   };
 
   const handleLeaveRoom = () => {
+    leaveGame();
+    setDismissedGameOver(false);
     setRoomCode(null);
+    setMode('online');
     window.history.pushState({}, '', window.location.pathname);
   };
 
@@ -305,16 +323,18 @@ export function App() {
       )}
 
       {/* Game Over Modal */}
-      {isGameOver && (
+      {isGameOver && !dismissedGameOver && (
         <GameOverModal
           status={status}
           winner={winner}
           reason={statusReason}
           myColor={myColor}
+          mode={mode}
           rematchOfferedBy={rematchOfferedBy}
           onRequestRematch={requestRematch}
           onAcceptRematch={acceptRematch}
           onReturnToLobby={handleLeaveRoom}
+          onClose={() => setDismissedGameOver(true)}
         />
       )}
 

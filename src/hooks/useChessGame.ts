@@ -550,18 +550,6 @@ export function useChessGame({
     }
   }, [mode]);
 
-  const requestRematch = useCallback(() => {
-    setRematchOfferedBy(myColorRef.current);
-
-    if (channelRef.current && mode === 'online') {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'rematch_offer',
-        payload: { offeredBy: myColorRef.current },
-      });
-    }
-  }, [mode]);
-
   const resetGame = useCallback(
     (swapColors: boolean = true) => {
       chessRef.current = new Chess();
@@ -603,6 +591,51 @@ export function useChessGame({
       });
     }
   }, [resetGame, mode]);
+
+  const requestRematch = useCallback(() => {
+    if (mode === 'local') {
+      resetGame(false);
+      return;
+    }
+
+    if (rematchOfferedBy && rematchOfferedBy !== myColorRef.current) {
+      acceptRematch();
+      return;
+    }
+
+    setRematchOfferedBy(myColorRef.current);
+
+    if (channelRef.current && mode === 'online') {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'rematch_offer',
+        payload: { offeredBy: myColorRef.current },
+      });
+    }
+  }, [mode, rematchOfferedBy, acceptRematch, resetGame]);
+
+  const leaveGame = useCallback(() => {
+    chessRef.current = new Chess();
+    setFen(chessRef.current.fen());
+    setTurn('white');
+    setStatus('waiting');
+    setWinner(null);
+    setStatusReason('');
+    setHistory([]);
+    setLastMove(null);
+    setSelectedSquare(null);
+    setPossibleMoves([]);
+    setPendingPromotion(null);
+    setPremove(null);
+    setDrawOfferedBy(null);
+    setRematchOfferedBy(null);
+    setOpponent(null);
+    setSpectatorCount(0);
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
+  }, []);
 
   const toggleBoardOrientation = useCallback(() => {
     setBoardOrientation((prev) => (prev === 'white' ? 'black' : 'white'));
@@ -956,5 +989,6 @@ export function useChessGame({
     toggleBoardOrientation,
     updatePlayerName,
     resetGame,
+    leaveGame,
   };
 }
