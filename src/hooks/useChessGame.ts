@@ -14,9 +14,21 @@ import type {
   RoomPresence,
 } from '../lib/types';
 
+const logSync = (msg: string, data?: unknown) => {
+  const now = new Date();
+  const timeStr = `${now.toTimeString().slice(0, 8)}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+  const prefix = `[ChessSync ${timeStr}]`;
+  if (data !== undefined) {
+    console.log(`%c${prefix} %c${msg}`, 'color: #38bdf8; font-weight: bold;', 'color: #e2e8f0;', data);
+  } else {
+    console.log(`%c${prefix} %c${msg}`, 'color: #38bdf8; font-weight: bold;', 'color: #e2e8f0;');
+  }
+};
+
 interface UseChessGameProps {
   roomCode: string | null;
   mode: GameMode;
+  isHost?: boolean;
   initialTimeControl?: number;
   initialColorPreference?: 'white' | 'black' | 'random';
   initialEnablePremoves?: boolean;
@@ -31,6 +43,7 @@ export interface Premove {
 export function useChessGame({
   roomCode,
   mode,
+  isHost: initialIsHost = true,
   initialTimeControl = 600,
   initialColorPreference = 'white',
   initialEnablePremoves = true,
@@ -46,8 +59,8 @@ export function useChessGame({
   const session = useRef(getOrCreatePlayerSession());
   const [myPlayerId] = useState<string>(session.current.id);
   const [myPlayerName, setMyPlayerName] = useState<string>(session.current.defaultName);
-  const [myColor, setMyColor] = useState<PlayerColor>('white');
-  const [isHost, setIsHost] = useState<boolean>(true);
+  const [myColor, setMyColor] = useState<PlayerColor>(initialIsHost ? 'white' : 'black');
+  const [isHost, setIsHost] = useState<boolean>(initialIsHost);
   const [isSpectator, setIsSpectator] = useState<boolean>(false);
   const [opponent, setOpponent] = useState<PlayerInfo | null>(null);
   const [spectatorCount, setSpectatorCount] = useState<number>(0);
@@ -93,6 +106,14 @@ export function useChessGame({
   const myColorRef = useRef<PlayerColor>('white');
   myColorRef.current = myColor;
 
+  const isHostRef = useRef<boolean>(initialIsHost);
+  isHostRef.current = isHost;
+
+  useEffect(() => {
+    setIsHost(initialIsHost);
+    isHostRef.current = initialIsHost;
+  }, [initialIsHost]);
+
   const myPlayerNameRef = useRef<string>(myPlayerName);
   myPlayerNameRef.current = myPlayerName;
 
@@ -116,6 +137,10 @@ export function useChessGame({
 
   const premoveRef = useRef<Premove | null>(null);
   premoveRef.current = premove;
+
+  const tryExecutePremoveRef = useRef<() => void>(() => {});
+  const refreshGameStateRef = useRef<() => void>(() => {});
+  const resetGameRef = useRef<(swap?: boolean) => void>(() => {});
 
   // Calculate captured pieces
   const getCapturedPieces = useCallback((): { white: CapturedPieces; black: CapturedPieces; scoreDiff: number } => {
@@ -253,6 +278,8 @@ export function useChessGame({
         refreshGameState();
 
         if (broadcast && channelRef.current && mode === 'online') {
+          const moveSendTs = Date.now();
+          logSync(`[Move] Broadcasting move ${from}-${to} (SAN: ${moveResult.san})`);
           channelRef.current.send({
             type: 'broadcast',
             event: 'move',
@@ -265,6 +292,7 @@ export function useChessGame({
               turn: chess.turn() === 'w' ? 'white' : 'black',
               whiteTime: whiteTimeRef.current,
               blackTime: blackTimeRef.current,
+              sentAt: moveSendTs,
             },
           });
         }
@@ -580,6 +608,10 @@ export function useChessGame({
     [mode]
   );
 
+  tryExecutePremoveRef.current = tryExecutePremove;
+  refreshGameStateRef.current = refreshGameState;
+  resetGameRef.current = resetGame;
+
   const acceptRematch = useCallback(() => {
     resetGame(true);
 
@@ -698,13 +730,22 @@ export function useChessGame({
 
     // Determine initial color assignment
     let initialColor: PlayerColor = 'white';
-    if (initialColorPreference === 'black') {
+    if (initialIsHost) {
+      if (initialColorPreference === 'black') {
+        initialColor = 'black';
+      } else if (initialColorPreference === 'random') {
+        initialColor = Math.random() < 0.5 ? 'white' : 'black';
+      }
+    } else {
+      // Guest defaults to black until host's sub-50ms start_match confirms orientation
       initialColor = 'black';
-    } else if (initialColorPreference === 'random') {
-      initialColor = Math.random() < 0.5 ? 'white' : 'black';
     }
     setMyColor(initialColor);
     setBoardOrientation(initialColor);
+    myColorRef.current = initialColor;
+
+    const joinReqTime = performance.now();
+    logSync(`[Channel] Connecting to room "${roomCode.toUpperCase()}" as ${initialIsHost ? 'HOST' : 'GUEST'} (assigned: ${initialColor})`);
 
     const channelName = `chess-room:${roomCode.toUpperCase()}`;
     const channel = supabase.channel(channelName, {
@@ -718,7 +759,9 @@ export function useChessGame({
 
     // 1. Move broadcast listener
     channel.on('broadcast', { event: 'move' }, (event) => {
-      const { from, to, promotion, whiteTime: wT, blackTime: bT } = event.payload;
+      const { from, to, promotion, whiteTime: wT, blackTime: bT, sentAt, san } = event.payload;
+      const transitMs = sentAt ? Date.now() - sentAt : undefined;
+      logSync(`[Move] Received opponent move ${from}-${to} (${san || '?'}) ${transitMs !== undefined ? `[latency: ${transitMs}ms]` : ''}`);
       try {
         const chess = chessRef.current;
         const moveRes = chess.move({ from, to, promotion: promotion || 'q' });
@@ -747,14 +790,14 @@ export function useChessGame({
           setLastMove({ from, to });
           setSelectedSquare(null);
           setPossibleMoves([]);
-          refreshGameState();
+          refreshGameStateRef.current();
 
           if (typeof wT === 'number') setWhiteTime(wT);
           if (typeof bT === 'number') setBlackTime(bT);
 
           // Trigger queued pre-move if available!
           setTimeout(() => {
-            tryExecutePremove();
+            tryExecutePremoveRef.current();
           }, 60);
         }
       } catch (err) {
@@ -768,7 +811,111 @@ export function useChessGame({
       setMessages((prev) => [...prev, msg]);
     });
 
-    // 3. Resign listener
+    // 3. Instant Handshake - Host receives 'guest_joined'
+    channel.on('broadcast', { event: 'guest_joined' }, (event) => {
+      const payload = event.payload;
+      const transitMs = payload.sentAt ? Date.now() - payload.sentAt : undefined;
+      logSync(`[Handshake] Host received 'guest_joined' from "${payload.guestName}" (${payload.guestId}) ${transitMs !== undefined ? `[transit: ${transitMs}ms]` : ''}`);
+
+      if (!isHostRef.current) return;
+
+      const hostCol = myColorRef.current;
+      const guestCol: PlayerColor = hostCol === 'white' ? 'black' : 'white';
+
+      setOpponent({
+        id: payload.guestId,
+        name: payload.guestName,
+        color: guestCol,
+        isHost: false,
+        connected: true,
+      });
+
+      setStatus((cur) => {
+        if (cur === 'waiting') {
+          soundManager.playGameStart();
+          return 'active';
+        }
+        return cur;
+      });
+
+      logSync(`[Handshake] Host broadcasting 'start_match' (hostColor: ${hostCol}, guestColor: ${guestCol})`);
+      channel.send({
+        type: 'broadcast',
+        event: 'start_match',
+        payload: {
+          hostId: myPlayerId,
+          hostName: myPlayerNameRef.current,
+          hostColor: hostCol,
+          guestColor: guestCol,
+          fen: chessRef.current.fen(),
+          timeControl: timeControlRef.current,
+          whiteTime: whiteTimeRef.current,
+          blackTime: blackTimeRef.current,
+          enablePremoves: enablePremovesRef.current,
+          history: historyRef.current,
+          sentAt: Date.now(),
+        },
+      });
+    });
+
+    // 4. Instant Handshake - Guest receives 'start_match'
+    channel.on('broadcast', { event: 'start_match' }, (event) => {
+      const payload = event.payload;
+      const transitMs = payload.sentAt ? Date.now() - payload.sentAt : undefined;
+      const totalElapsed = Math.round(performance.now() - joinReqTime);
+      logSync(`[Handshake] Guest received 'start_match' from host "${payload.hostName}" ${transitMs !== undefined ? `[transit: ${transitMs}ms]` : ''} [Total join-to-play latency: ${totalElapsed}ms]`);
+
+      if (isHostRef.current) return;
+
+      const myAssignedColor: PlayerColor = payload.guestColor;
+      setMyColor(myAssignedColor);
+      setBoardOrientation(myAssignedColor);
+      myColorRef.current = myAssignedColor;
+
+      setOpponent({
+        id: payload.hostId,
+        name: payload.hostName,
+        color: payload.hostColor,
+        isHost: true,
+        connected: true,
+      });
+
+      if (payload.fen) {
+        chessRef.current.load(payload.fen);
+        setFen(payload.fen);
+        setTurn(chessRef.current.turn() === 'w' ? 'white' : 'black');
+      }
+      if (typeof payload.timeControl === 'number') {
+        setTimeControl(payload.timeControl);
+        timeControlRef.current = payload.timeControl;
+      }
+      if (typeof payload.whiteTime === 'number') setWhiteTime(payload.whiteTime);
+      if (typeof payload.blackTime === 'number') setBlackTime(payload.blackTime);
+      if (typeof payload.enablePremoves === 'boolean') setEnablePremoves(payload.enablePremoves);
+      if (payload.history) setHistory(payload.history);
+
+      setStatus('active');
+      soundManager.playGameStart();
+      logSync(`[Match Active] Playable right away! Orientation: ${myAssignedColor}, Turn: ${chessRef.current.turn() === 'w' ? 'white' : 'black'}`);
+    });
+
+    // 5. Host Ready signal (if guest was already waiting in room)
+    channel.on('broadcast', { event: 'host_ready' }, (event) => {
+      logSync(`[Handshake] Guest received 'host_ready' from host "${event.payload?.hostName}". Responding with 'guest_joined'...`);
+      if (!isHostRef.current) {
+        channel.send({
+          type: 'broadcast',
+          event: 'guest_joined',
+          payload: {
+            guestId: myPlayerId,
+            guestName: myPlayerNameRef.current,
+            sentAt: Date.now(),
+          },
+        });
+      }
+    });
+
+    // 6. Resign listener
     channel.on('broadcast', { event: 'resign' }, (event) => {
       const { resignedBy } = event.payload;
       const winningColor = resignedBy === 'white' ? 'black' : 'white';
@@ -778,7 +925,7 @@ export function useChessGame({
       soundManager.playGameOver(winningColor === myColorRef.current);
     });
 
-    // 4. Draw listeners
+    // 7. Draw listeners
     channel.on('broadcast', { event: 'draw_offer' }, (event) => {
       setDrawOfferedBy(event.payload.offeredBy);
     });
@@ -805,7 +952,7 @@ export function useChessGame({
       ]);
     });
 
-    // 5. Rematch listeners
+    // 8. Rematch listeners
     channel.on('broadcast', { event: 'rematch_offer' }, (event) => {
       setRematchOfferedBy(event.payload.offeredBy);
     });
@@ -813,11 +960,12 @@ export function useChessGame({
     channel.on('broadcast', { event: 'rematch_accept' }, (event) => {
       const newTc = event.payload.timeControl || timeControlRef.current;
       setTimeControl(newTc);
-      resetGame(true);
+      resetGameRef.current(true);
     });
 
-    // 6. State Sync
+    // 9. State Sync (spectator or refresh fallback)
     channel.on('broadcast', { event: 'sync_request' }, () => {
+      logSync(`[Sync] Received 'sync_request', broadcasting current match state`);
       channel.send({
         type: 'broadcast',
         event: 'sync_state',
@@ -857,7 +1005,7 @@ export function useChessGame({
         if (syncHist) setHistory(syncHist);
         if (typeof syncPremoves === 'boolean') setEnablePremoves(syncPremoves);
 
-        if (hostColor) {
+        if (hostColor && !isHostRef.current) {
           const oppColor: PlayerColor = hostColor === 'white' ? 'black' : 'white';
           setMyColor(oppColor);
           setBoardOrientation(oppColor);
@@ -867,7 +1015,7 @@ export function useChessGame({
       }
     });
 
-    // 7. Presence Tracking
+    // 10. Presence Tracking (background & spectators)
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState<RoomPresence>();
       const allPresences: RoomPresence[] = [];
@@ -876,74 +1024,90 @@ export function useChessGame({
           allPresences.push(state[key][0]);
         }
       }
+      logSync(`[Presence] Sync update. Connected clients: ${allPresences.length}`);
 
       const others = allPresences.filter((p) => p.playerId !== myPlayerId);
       const spectators = others.filter((p) => p.role === 'spectator');
       setSpectatorCount(spectators.length);
 
-      const whitePlayer = allPresences.find((p) => p.role === 'white');
-      const blackPlayer = allPresences.find((p) => p.role === 'black');
-      if (
-        whitePlayer &&
-        blackPlayer &&
-        whitePlayer.playerId !== myPlayerId &&
-        blackPlayer.playerId !== myPlayerId
-      ) {
+      if (others.length >= 2 && !isHostRef.current && statusRef.current !== 'active') {
         setIsSpectator(true);
-      } else {
-        setIsSpectator(false);
       }
 
-      if (others.length === 0) {
-        setIsHost(true);
-      } else {
-        setIsHost(false);
-      }
-
-      const activeOpponent = others.find((p) => p.role === 'white' || p.role === 'black');
-      if (activeOpponent) {
+      // Fallback only if handshake hasn't activated game yet
+      if (statusRef.current === 'waiting' && others.length > 0) {
+        const activeOpponent = others[0];
+        logSync(`[Presence Fallback] Activating game via presence fallback for "${activeOpponent.name}"`);
         setOpponent({
           id: activeOpponent.playerId,
           name: activeOpponent.name,
-          color: activeOpponent.role as PlayerColor,
-          isHost: false,
+          color: myColorRef.current === 'white' ? 'black' : 'white',
+          isHost: !isHostRef.current,
           connected: true,
         });
 
-        setStatus((curStatus) => {
-          if (curStatus === 'waiting') {
-            soundManager.playGameStart();
-            return 'active';
-          }
-          return curStatus;
-        });
-      } else {
-        setOpponent(null);
+        setStatus('active');
+        soundManager.playGameStart();
       }
     });
 
+    let fallbackPingTimer: number | null = null;
+
     channel.subscribe(async (subStatus) => {
+      const subElapsed = Math.round(performance.now() - joinReqTime);
+      logSync(`[Channel] Subscription status: ${subStatus} (took ${subElapsed}ms)`);
+
       if (subStatus === 'SUBSCRIBED') {
         await channel.track({
           playerId: myPlayerId,
           name: myPlayerNameRef.current,
-          role: initialColor,
+          role: initialIsHost ? initialColor : 'guest',
           joinedAt: Date.now(),
         });
 
-        channel.send({
-          type: 'broadcast',
-          event: 'sync_request',
-          payload: { requesterId: myPlayerId },
-        });
+        if (initialIsHost) {
+          logSync(`[Handshake] Host broadcasting 'host_ready'`);
+          channel.send({
+            type: 'broadcast',
+            event: 'host_ready',
+            payload: { hostId: myPlayerId, hostName: myPlayerNameRef.current, sentAt: Date.now() },
+          });
+        } else {
+          logSync(`[Handshake] Guest broadcasting 'guest_joined' immediately upon SUBSCRIBED`);
+          channel.send({
+            type: 'broadcast',
+            event: 'guest_joined',
+            payload: {
+              guestId: myPlayerId,
+              guestName: myPlayerNameRef.current,
+              sentAt: Date.now(),
+            },
+          });
+
+          // Fallback retry after 1.2s if host was still connecting
+          fallbackPingTimer = window.setTimeout(() => {
+            if (statusRef.current === 'waiting') {
+              logSync(`[Handshake] Retrying 'guest_joined' ping (1.2s fallback)`);
+              channel.send({
+                type: 'broadcast',
+                event: 'guest_joined',
+                payload: {
+                  guestId: myPlayerId,
+                  guestName: myPlayerNameRef.current,
+                  sentAt: Date.now(),
+                },
+              });
+            }
+          }, 1200);
+        }
       }
     });
 
     return () => {
+      if (fallbackPingTimer) clearTimeout(fallbackPingTimer);
       channel.unsubscribe();
     };
-    // ONLY depend on roomCode and mode! NO recreation on state changes!
-  }, [roomCode, mode, myPlayerId, initialColorPreference, refreshGameState, tryExecutePremove, resetGame]);
+  }, [roomCode, mode, myPlayerId, initialIsHost, initialColorPreference]);
 
   return {
     fen,

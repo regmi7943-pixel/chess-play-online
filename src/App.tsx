@@ -22,12 +22,24 @@ export function App() {
   const [activeTab, setActiveTab] = useState<'moves' | 'chat'>('moves');
   const [showMobilePanel, setShowMobilePanel] = useState<boolean>(false);
 
+  const [isHost, setIsHost] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    if (roomParam) {
+      return sessionStorage.getItem(`created_room_${roomParam.toUpperCase()}`) === 'true';
+    }
+    return true;
+  });
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     if (roomParam) {
-      setRoomCode(roomParam.toUpperCase());
+      const upper = roomParam.toUpperCase();
+      setRoomCode(upper);
       setMode('online');
+      const wasCreated = sessionStorage.getItem(`created_room_${upper}`) === 'true';
+      setIsHost(wasCreated);
     }
   }, []);
 
@@ -73,6 +85,7 @@ export function App() {
   } = useChessGame({
     roomCode,
     mode,
+    isHost,
     initialTimeControl: timeControl,
     initialColorPreference: colorPref,
     initialEnablePremoves: allowPremoves,
@@ -90,6 +103,8 @@ export function App() {
     leaveGame();
     setDismissedGameOver(false);
     const randomCode = 'CP-' + Math.floor(1000 + Math.random() * 9000);
+    sessionStorage.setItem(`created_room_${randomCode}`, 'true');
+    setIsHost(true);
     setTimeControl(tc);
     setColorPref(color);
     setAllowPremoves(premoves);
@@ -104,6 +119,8 @@ export function App() {
     leaveGame();
     setDismissedGameOver(false);
     const cleaned = code.trim().toUpperCase();
+    sessionStorage.removeItem(`created_room_${cleaned}`);
+    setIsHost(false);
     setMode('online');
     setRoomCode(cleaned);
 
@@ -114,6 +131,7 @@ export function App() {
   const handleStartLocalGame = () => {
     leaveGame();
     setDismissedGameOver(false);
+    setIsHost(true);
     setMode('local');
     setRoomCode(null);
     setTimeControl(0);
@@ -122,6 +140,7 @@ export function App() {
   const handleLeaveRoom = () => {
     leaveGame();
     setDismissedGameOver(false);
+    setIsHost(true);
     setRoomCode(null);
     setMode('online');
     window.history.pushState({}, '', window.location.pathname);
