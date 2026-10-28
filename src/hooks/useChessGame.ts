@@ -143,18 +143,23 @@ export function useChessGame({
   }, [isSpectator]);
 
   useEffect(() => {
-    setTimeControl(initialTimeControl);
-    timeControlRef.current = initialTimeControl;
-    setWhiteTime(initialTimeControl);
-    whiteTimeRef.current = initialTimeControl;
-    setBlackTime(initialTimeControl);
-    blackTimeRef.current = initialTimeControl;
-  }, [initialTimeControl]);
+    if (mode === 'local' || (initialIsHost && status === 'waiting')) {
+      setTimeControl(initialTimeControl);
+      timeControlRef.current = initialTimeControl;
+      setWhiteTime(initialTimeControl);
+      whiteTimeRef.current = initialTimeControl;
+      setBlackTime(initialTimeControl);
+      blackTimeRef.current = initialTimeControl;
+    }
+  }, [initialTimeControl, mode, initialIsHost, status]);
 
   useEffect(() => {
     setEnablePremoves(initialEnablePremoves);
     enablePremovesRef.current = initialEnablePremoves;
   }, [initialEnablePremoves]);
+
+  const opponentRef = useRef<PlayerInfo | null>(opponent);
+  opponentRef.current = opponent;
 
   const premoveRef = useRef<Premove | null>(null);
   premoveRef.current = premove;
@@ -162,6 +167,7 @@ export function useChessGame({
   const tryExecutePremoveRef = useRef<() => void>(() => {});
   const refreshGameStateRef = useRef<() => void>(() => {});
   const resetGameRef = useRef<(swap?: boolean, tcOverride?: number) => void>(() => {});
+  const applyRematchRef = useRef<(whiteId: string, blackId: string, tc: number, initiatorPreviousColor?: PlayerColor) => void>(() => {});
 
   // Calculate captured pieces
   const getCapturedPieces = useCallback((): { white: CapturedPieces; black: CapturedPieces; scoreDiff: number } => {
@@ -645,21 +651,95 @@ export function useChessGame({
     [mode]
   );
 
+  const applyRematch = useCallback(
+    (whitePlayerId: string, blackPlayerId: string, tc: number, initiatorPreviousColor?: PlayerColor) => {
+      let amIWhite: boolean;
+      if (whitePlayerId === myPlayerId) {
+        amIWhite = true;
+      } else if (blackPlayerId === myPlayerId) {
+        amIWhite = false;
+      } else if (initiatorPreviousColor) {
+        amIWhite = initiatorPreviousColor === 'white';
+      } else {
+        amIWhite = myColorRef.current !== 'white';
+      }
+
+      const newMyColor: PlayerColor = amIWhite ? 'white' : 'black';
+      const newOpponentColor: PlayerColor = amIWhite ? 'black' : 'white';
+
+      logSync(`[Rematch] Starting new match! My color: ${newMyColor}, Opponent: ${newOpponentColor}, TimeControl: ${tc}`);
+
+      chessRef.current = new Chess();
+      setFen(chessRef.current.fen());
+      setTurn('white');
+      setStatus('active');
+      setWinner(null);
+      setStatusReason('');
+      setHistory([]);
+      setLastMove(null);
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+      setPendingPromotion(null);
+      setPremove(null);
+      setDrawOfferedBy(null);
+      setRematchOfferedBy(null);
+
+      setTimeControl(tc);
+      timeControlRef.current = tc;
+      setWhiteTime(tc);
+      whiteTimeRef.current = tc;
+      setBlackTime(tc);
+      blackTimeRef.current = tc;
+
+      setMyColor(newMyColor);
+      myColorRef.current = newMyColor;
+      setBoardOrientation(newMyColor);
+      setOpponent((prev) => (prev ? { ...prev, color: newOpponentColor } : null));
+
+      soundManager.playGameStart();
+    },
+    [myPlayerId]
+  );
+
   tryExecutePremoveRef.current = tryExecutePremove;
   refreshGameStateRef.current = refreshGameState;
   resetGameRef.current = resetGame;
+  applyRematchRef.current = applyRematch;
 
   const acceptRematch = useCallback(() => {
-    resetGame(true);
+    if (mode === 'local') {
+      resetGame(false);
+      return;
+    }
+
+    const oppId = opponentRef.current?.id || 'opponent';
+    const currentMyColor = myColorRef.current;
+    const nextWhiteId = currentMyColor === 'white' ? oppId : myPlayerId;
+    const nextBlackId = currentMyColor === 'white' ? myPlayerId : oppId;
+    const tc = timeControlRef.current;
+
+    applyRematch(nextWhiteId, nextBlackId, tc, currentMyColor);
 
     if (channelRef.current && mode === 'online') {
+      const rematchPayload = {
+        whitePlayerId: nextWhiteId,
+        blackPlayerId: nextBlackId,
+        initiatorPreviousColor: currentMyColor,
+        timeControl: tc,
+        sentAt: Date.now(),
+      };
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'rematch_start',
+        payload: rematchPayload,
+      });
       channelRef.current.send({
         type: 'broadcast',
         event: 'rematch_accept',
-        payload: { timeControl: timeControlRef.current },
+        payload: rematchPayload,
       });
     }
-  }, [resetGame, mode]);
+  }, [mode, myPlayerId, applyRematch, resetGame]);
 
   const requestRematch = useCallback(() => {
     if (mode === 'local') {
@@ -1015,9 +1095,16 @@ export function useChessGame({
       setRematchOfferedBy(event.payload.offeredBy);
     });
 
+    channel.on('broadcast', { event: 'rematch_start' }, (event) => {
+      const { whitePlayerId, blackPlayerId, initiatorPreviousColor, timeControl: syncTc } = event.payload || {};
+      const tc = typeof syncTc === 'number' ? syncTc : timeControlRef.current;
+      applyRematchRef.current(whitePlayerId, blackPlayerId, tc, initiatorPreviousColor);
+    });
+
     channel.on('broadcast', { event: 'rematch_accept' }, (event) => {
-      const newTc = typeof event.payload?.timeControl === 'number' ? event.payload.timeControl : timeControlRef.current;
-      resetGameRef.current(true, newTc);
+      const { whitePlayerId, blackPlayerId, initiatorPreviousColor, timeControl: syncTc } = event.payload || {};
+      const tc = typeof syncTc === 'number' ? syncTc : timeControlRef.current;
+      applyRematchRef.current(whitePlayerId, blackPlayerId, tc, initiatorPreviousColor);
     });
 
     // 9. State Sync (spectator or refresh fallback)

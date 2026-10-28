@@ -100,6 +100,12 @@ export function App() {
     }
   }, [status]);
 
+  useEffect(() => {
+    if (typeof gameTimeControl === 'number' && gameTimeControl !== timeControl) {
+      setTimeControl(gameTimeControl);
+    }
+  }, [gameTimeControl, timeControl]);
+
   const handleCreateOnlineGame = (tc: number, color: 'white' | 'black' | 'random', premoves: boolean) => {
     leaveGame();
     setDismissedGameOver(false);
