@@ -53,6 +53,7 @@ export function App() {
     myColor,
     opponent,
     spectatorCount,
+    timeControl: gameTimeControl,
     whiteTime,
     blackTime,
     premove,
@@ -191,7 +192,7 @@ export function App() {
                 myPlayerName={myPlayerName}
                 opponent={opponent}
                 boardOrientation={boardOrientation}
-                timeControl={timeControl}
+                timeControl={gameTimeControl}
                 whiteTime={whiteTime}
                 blackTime={blackTime}
                 captured={captured}
@@ -230,12 +231,18 @@ export function App() {
                   status={status}
                   myColor={myColor}
                   roomCode={roomCode}
+                  mode={mode}
                   drawOfferedBy={drawOfferedBy}
+                  rematchOfferedBy={rematchOfferedBy}
                   onResign={resignGame}
                   onOfferDraw={offerDraw}
                   onAcceptDraw={acceptDraw}
                   onDeclineDraw={declineDraw}
                   onFlipBoard={toggleBoardOrientation}
+                  onRequestRematch={requestRematch}
+                  onAcceptRematch={acceptRematch}
+                  onReturnToLobby={handleLeaveRoom}
+                  onReopenModal={() => setDismissedGameOver(false)}
                 />
 
                 {/* Mobile Drawer Toggle for Moves/Chat */}
@@ -280,12 +287,18 @@ export function App() {
                   status={status}
                   myColor={myColor}
                   roomCode={roomCode}
+                  mode={mode}
                   drawOfferedBy={drawOfferedBy}
+                  rematchOfferedBy={rematchOfferedBy}
                   onResign={resignGame}
                   onOfferDraw={offerDraw}
                   onAcceptDraw={acceptDraw}
                   onDeclineDraw={declineDraw}
                   onFlipBoard={toggleBoardOrientation}
+                  onRequestRematch={requestRematch}
+                  onAcceptRematch={acceptRematch}
+                  onReturnToLobby={handleLeaveRoom}
+                  onReopenModal={() => setDismissedGameOver(false)}
                 />
               </div>
 

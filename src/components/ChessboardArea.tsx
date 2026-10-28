@@ -160,9 +160,9 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = ({
               <span className="font-semibold text-xs sm:text-sm text-slate-100 truncate">
                 {topColor === myColor
                   ? `${myPlayerName} (You)`
-                  : opponent?.name || 'Waiting...'}
+                  : opponent?.name || (!opponent && status === 'active' ? (topColor === 'white' ? 'White' : 'Black') : 'Waiting...')}
               </span>
-              {topColor !== myColor && (
+              {topColor !== myColor && opponent && (
                 <div
                   className={`w-2 h-2 rounded-full shrink-0 ${
                     opponent?.connected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'

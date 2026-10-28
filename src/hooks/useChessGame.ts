@@ -135,12 +135,33 @@ export function useChessGame({
   const enablePremovesRef = useRef<boolean>(enablePremoves);
   enablePremovesRef.current = enablePremoves;
 
+  const isSpectatorRef = useRef<boolean>(isSpectator);
+  isSpectatorRef.current = isSpectator;
+
+  useEffect(() => {
+    isSpectatorRef.current = isSpectator;
+  }, [isSpectator]);
+
+  useEffect(() => {
+    setTimeControl(initialTimeControl);
+    timeControlRef.current = initialTimeControl;
+    setWhiteTime(initialTimeControl);
+    whiteTimeRef.current = initialTimeControl;
+    setBlackTime(initialTimeControl);
+    blackTimeRef.current = initialTimeControl;
+  }, [initialTimeControl]);
+
+  useEffect(() => {
+    setEnablePremoves(initialEnablePremoves);
+    enablePremovesRef.current = initialEnablePremoves;
+  }, [initialEnablePremoves]);
+
   const premoveRef = useRef<Premove | null>(null);
   premoveRef.current = premove;
 
   const tryExecutePremoveRef = useRef<() => void>(() => {});
   const refreshGameStateRef = useRef<() => void>(() => {});
-  const resetGameRef = useRef<(swap?: boolean) => void>(() => {});
+  const resetGameRef = useRef<(swap?: boolean, tcOverride?: number) => void>(() => {});
 
   // Calculate captured pieces
   const getCapturedPieces = useCallback((): { white: CapturedPieces; black: CapturedPieces; scoreDiff: number } => {
@@ -344,15 +365,18 @@ export function useChessGame({
       if (!targetSquare) return false;
       if (statusRef.current !== 'active') return false;
 
+      const chess = chessRef.current;
+      const currentEngineTurn = chess.turn() === 'w' ? 'white' : 'black';
+
       // Online mode pre-move check: if it is NOT my turn, record as pre-move if enabled!
       if (mode === 'online') {
-        if (isSpectator) return false;
-        const piece = chessRef.current.get(sourceSquare);
+        if (isSpectatorRef.current) return false;
+        const piece = chess.get(sourceSquare);
         if (!piece || (piece.color === 'w' ? 'white' : 'black') !== myColorRef.current) {
           return false;
         }
 
-        if (turn !== myColorRef.current) {
+        if (currentEngineTurn !== myColorRef.current) {
           if (enablePremovesRef.current) {
             // Register pre-move
             setPremove({
@@ -369,7 +393,7 @@ export function useChessGame({
       }
 
       // Check if move is legal
-      const legalMoves = chessRef.current.moves({ square: sourceSquare, verbose: true });
+      const legalMoves = chess.moves({ square: sourceSquare, verbose: true });
       const isValid = legalMoves.some((m) => m.to === targetSquare);
       if (!isValid) return false;
 
@@ -381,7 +405,7 @@ export function useChessGame({
 
       return executeMove(sourceSquare, targetSquare, 'q', true);
     },
-    [mode, isSpectator, turn, isPromotionMove, executeMove]
+    [mode, isPromotionMove, executeMove]
   );
 
   // Handle square click
@@ -389,9 +413,12 @@ export function useChessGame({
     (square: Square) => {
       if (statusRef.current !== 'active') return;
 
-      // Pre-move handling when opponent's turn
-      if (mode === 'online' && turn !== myColorRef.current) {
-        if (!enablePremovesRef.current || isSpectator) return;
+      const chess = chessRef.current;
+      const currentEngineTurn = chess.turn() === 'w' ? 'white' : 'black';
+
+      // Pre-move handling when opponent's turn in online mode
+      if (mode === 'online' && currentEngineTurn !== myColorRef.current) {
+        if (!enablePremovesRef.current || isSpectatorRef.current) return;
 
         // Cancel existing pre-move on empty square click
         if (premoveRef.current && square === premoveRef.current.to) {
@@ -400,7 +427,7 @@ export function useChessGame({
         }
 
         if (selectedSquare) {
-          const piece = chessRef.current.get(square);
+          const piece = chess.get(square);
           if (piece && (piece.color === 'w' ? 'white' : 'black') === myColorRef.current) {
             setSelectedSquare(square);
             return;
@@ -415,7 +442,7 @@ export function useChessGame({
           setPossibleMoves([]);
           return;
         } else {
-          const piece = chessRef.current.get(square);
+          const piece = chess.get(square);
           if (piece && (piece.color === 'w' ? 'white' : 'black') === myColorRef.current) {
             setSelectedSquare(square);
           }
@@ -425,8 +452,8 @@ export function useChessGame({
 
       // Normal turn square click
       if (selectedSquare) {
-        const clickedPiece = chessRef.current.get(square);
-        const currentTurnColor = chessRef.current.turn();
+        const clickedPiece = chess.get(square);
+        const currentTurnColor = chess.turn();
         if (clickedPiece && clickedPiece.color === currentTurnColor) {
           if (square === selectedSquare) {
             setSelectedSquare(null);
@@ -434,12 +461,12 @@ export function useChessGame({
             return;
           }
           setSelectedSquare(square);
-          const moves = chessRef.current.moves({ square, verbose: true });
+          const moves = chess.moves({ square, verbose: true });
           setPossibleMoves(moves.map((m) => m.to as Square));
           return;
         }
 
-        const moves = chessRef.current.moves({ square: selectedSquare, verbose: true });
+        const moves = chess.moves({ square: selectedSquare, verbose: true });
         const validMove = moves.find((m) => m.to === square);
 
         if (validMove) {
@@ -461,18 +488,18 @@ export function useChessGame({
         }
       }
 
-      const piece = chessRef.current.get(square);
+      const piece = chess.get(square);
       if (piece) {
         const pieceColor = piece.color === 'w' ? 'white' : 'black';
         if (mode === 'online' && pieceColor !== myColorRef.current) return;
-        if (mode === 'local' && pieceColor !== turn) return;
+        if (mode === 'local' && pieceColor !== currentEngineTurn) return;
 
         setSelectedSquare(square);
-        const moves = chessRef.current.moves({ square, verbose: true });
+        const moves = chess.moves({ square, verbose: true });
         setPossibleMoves(moves.map((m) => m.to as Square));
       }
     },
-    [mode, turn, isSpectator, selectedSquare, isPromotionMove, executeMove]
+    [mode, selectedSquare, isPromotionMove, executeMove]
   );
 
   const completePromotion = useCallback(
@@ -519,8 +546,8 @@ export function useChessGame({
   );
 
   const resignGame = useCallback(() => {
-    if (statusRef.current !== 'active') return;
-    const resigningColor = mode === 'online' ? myColorRef.current : turn;
+    if (statusRef.current !== 'active' || isSpectatorRef.current) return;
+    const resigningColor = mode === 'online' ? myColorRef.current : (chessRef.current.turn() === 'w' ? 'white' : 'black');
     const opponentColor = resigningColor === 'white' ? 'black' : 'white';
 
     setStatus('resigned');
@@ -535,10 +562,10 @@ export function useChessGame({
         payload: { resignedBy: resigningColor },
       });
     }
-  }, [mode, turn]);
+  }, [mode]);
 
   const offerDraw = useCallback(() => {
-    if (statusRef.current !== 'active') return;
+    if (statusRef.current !== 'active' || isSpectatorRef.current) return;
     setDrawOfferedBy(myColorRef.current);
 
     if (channelRef.current && mode === 'online') {
@@ -551,6 +578,7 @@ export function useChessGame({
   }, [mode]);
 
   const acceptDraw = useCallback(() => {
+    if (isSpectatorRef.current) return;
     setStatus('draw');
     setWinner('draw');
     setStatusReason('Draw agreed');
@@ -567,6 +595,7 @@ export function useChessGame({
   }, [mode]);
 
   const declineDraw = useCallback(() => {
+    if (isSpectatorRef.current) return;
     setDrawOfferedBy(null);
 
     if (channelRef.current && mode === 'online') {
@@ -579,7 +608,7 @@ export function useChessGame({
   }, [mode]);
 
   const resetGame = useCallback(
-    (swapColors: boolean = true) => {
+    (swapColors: boolean = true, tcOverride?: number) => {
       chessRef.current = new Chess();
       setFen(chessRef.current.fen());
       setTurn('white');
@@ -594,13 +623,21 @@ export function useChessGame({
       setPremove(null);
       setDrawOfferedBy(null);
       setRematchOfferedBy(null);
-      setWhiteTime(timeControlRef.current);
-      setBlackTime(timeControlRef.current);
+
+      const tc = typeof tcOverride === 'number' ? tcOverride : timeControlRef.current;
+      setTimeControl(tc);
+      timeControlRef.current = tc;
+      setWhiteTime(tc);
+      whiteTimeRef.current = tc;
+      setBlackTime(tc);
+      blackTimeRef.current = tc;
 
       if (swapColors && mode === 'online') {
         const newColor = myColorRef.current === 'white' ? 'black' : 'white';
         setMyColor(newColor);
+        myColorRef.current = newColor;
         setBoardOrientation(newColor);
+        setOpponent((prev) => (prev ? { ...prev, color: newColor === 'white' ? 'black' : 'white' } : null));
       }
 
       soundManager.playGameStart();
@@ -663,6 +700,9 @@ export function useChessGame({
     setRematchOfferedBy(null);
     setOpponent(null);
     setSpectatorCount(0);
+    setIsSpectator(false);
+    setWhiteTime(timeControlRef.current);
+    setBlackTime(timeControlRef.current);
     if (channelRef.current) {
       channelRef.current.unsubscribe();
       channelRef.current = null;
@@ -759,12 +799,22 @@ export function useChessGame({
 
     // 1. Move broadcast listener
     channel.on('broadcast', { event: 'move' }, (event) => {
-      const { from, to, promotion, whiteTime: wT, blackTime: bT, sentAt, san } = event.payload;
+      const { from, to, promotion, whiteTime: wT, blackTime: bT, sentAt, san, fen: syncFen } = event.payload;
       const transitMs = sentAt ? Date.now() - sentAt : undefined;
       logSync(`[Move] Received opponent move ${from}-${to} (${san || '?'}) ${transitMs !== undefined ? `[latency: ${transitMs}ms]` : ''}`);
       try {
         const chess = chessRef.current;
-        const moveRes = chess.move({ from, to, promotion: promotion || 'q' });
+        let moveRes = null;
+        try {
+          moveRes = chess.move({ from, to, promotion: promotion || 'q' });
+        } catch (mErr) {
+          console.warn('chess.move threw, attempting recovery via FEN:', mErr);
+        }
+
+        if (!moveRes && syncFen) {
+          chess.load(syncFen);
+        }
+
         if (moveRes) {
           if (chess.isCheck()) {
             soundManager.playCheck();
@@ -786,20 +836,28 @@ export function useChessGame({
               fen: chess.fen(),
             },
           ]);
-
-          setLastMove({ from, to });
-          setSelectedSquare(null);
-          setPossibleMoves([]);
-          refreshGameStateRef.current();
-
-          if (typeof wT === 'number') setWhiteTime(wT);
-          if (typeof bT === 'number') setBlackTime(bT);
-
-          // Trigger queued pre-move if available!
-          setTimeout(() => {
-            tryExecutePremoveRef.current();
-          }, 60);
+        } else if (syncFen) {
+          soundManager.playMove();
         }
+
+        setLastMove({ from, to });
+        setSelectedSquare(null);
+        setPossibleMoves([]);
+        refreshGameStateRef.current();
+
+        if (typeof wT === 'number') {
+          setWhiteTime(wT);
+          whiteTimeRef.current = wT;
+        }
+        if (typeof bT === 'number') {
+          setBlackTime(bT);
+          blackTimeRef.current = bT;
+        }
+
+        // Trigger queued pre-move if available!
+        setTimeout(() => {
+          tryExecutePremoveRef.current();
+        }, 50);
       } catch (err) {
         console.error('Failed to apply opponent move:', err);
       }
@@ -958,9 +1016,8 @@ export function useChessGame({
     });
 
     channel.on('broadcast', { event: 'rematch_accept' }, (event) => {
-      const newTc = event.payload.timeControl || timeControlRef.current;
-      setTimeControl(newTc);
-      resetGameRef.current(true);
+      const newTc = typeof event.payload?.timeControl === 'number' ? event.payload.timeControl : timeControlRef.current;
+      resetGameRef.current(true, newTc);
     });
 
     // 9. State Sync (spectator or refresh fallback)
@@ -999,15 +1056,28 @@ export function useChessGame({
         setFen(syncFen);
         setTurn(chessRef.current.turn() === 'w' ? 'white' : 'black');
         if (syncStatus) setStatus(syncStatus);
-        if (syncTc) setTimeControl(syncTc);
-        if (typeof sWt === 'number') setWhiteTime(sWt);
-        if (typeof sBt === 'number') setBlackTime(sBt);
+        if (typeof syncTc === 'number') {
+          setTimeControl(syncTc);
+          timeControlRef.current = syncTc;
+        }
+        if (typeof sWt === 'number') {
+          setWhiteTime(sWt);
+          whiteTimeRef.current = sWt;
+        }
+        if (typeof sBt === 'number') {
+          setBlackTime(sBt);
+          blackTimeRef.current = sBt;
+        }
         if (syncHist) setHistory(syncHist);
-        if (typeof syncPremoves === 'boolean') setEnablePremoves(syncPremoves);
+        if (typeof syncPremoves === 'boolean') {
+          setEnablePremoves(syncPremoves);
+          enablePremovesRef.current = syncPremoves;
+        }
 
         if (hostColor && !isHostRef.current) {
           const oppColor: PlayerColor = hostColor === 'white' ? 'black' : 'white';
           setMyColor(oppColor);
+          myColorRef.current = oppColor;
           setBoardOrientation(oppColor);
         }
       } catch (err) {
@@ -1030,9 +1100,16 @@ export function useChessGame({
       const spectators = others.filter((p) => p.role === 'spectator');
       setSpectatorCount(spectators.length);
 
-      if (others.length >= 2 && !isHostRef.current && statusRef.current !== 'active') {
+      if (others.length >= 2 && !isHostRef.current) {
         setIsSpectator(true);
       }
+
+      // Update opponent connection status
+      setOpponent((prev) => {
+        if (!prev) return null;
+        const isStillPresent = others.some((p) => p.playerId === prev.id);
+        return { ...prev, connected: isStillPresent };
+      });
 
       // Fallback only if handshake hasn't activated game yet
       if (statusRef.current === 'waiting' && others.length > 0) {
@@ -1058,10 +1135,14 @@ export function useChessGame({
       logSync(`[Channel] Subscription status: ${subStatus} (took ${subElapsed}ms)`);
 
       if (subStatus === 'SUBSCRIBED') {
+        const assignedRole = isSpectatorRef.current
+          ? 'spectator'
+          : (initialIsHost ? initialColor : (initialColor === 'white' ? 'black' : 'white'));
+
         await channel.track({
           playerId: myPlayerId,
           name: myPlayerNameRef.current,
-          role: initialIsHost ? initialColor : 'guest',
+          role: assignedRole,
           joinedAt: Date.now(),
         });
 

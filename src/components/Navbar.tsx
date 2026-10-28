@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="w-full bg-[#141b26]/90 backdrop-blur-md border-b border-[#243042] sticky top-0 z-40 px-4 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={roomCode ? onLeaveRoom : undefined}>
+        <div className="flex items-center gap-3 cursor-pointer" onClick={(roomCode || mode === 'local') ? onLeaveRoom : undefined}>
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20">
             <Crown className="w-5 h-5 fill-white" />
           </div>
@@ -56,6 +56,12 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Room & Connection Info (When in game) */}
+        {mode === 'local' && (
+          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 py-1 px-2.5 rounded-lg text-xs text-emerald-400 font-medium">
+            <span>Pass & Play</span>
+          </div>
+        )}
+
         {roomCode && (
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 bg-[#1b2433] border border-[#2b3a4f] py-1 px-2.5 rounded-lg text-xs">
@@ -125,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Leave room */}
-          {roomCode && (
+          {(roomCode || mode === 'local') && (
             <button
               onClick={onLeaveRoom}
               className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 text-xs font-semibold transition-colors"
