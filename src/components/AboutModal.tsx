@@ -10,8 +10,8 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-      <div className="bg-[#141b26] border border-[#2b3a4f] rounded-2xl p-5 sm:p-6 max-w-md w-full text-left shadow-2xl relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+      <div className="bg-[#141b26] border border-[#2b3a4f] rounded-2xl p-5 sm:p-6 max-w-md w-full text-left relative">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"

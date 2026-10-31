@@ -164,7 +164,7 @@ export function App() {
   const isGameOver = status !== 'active' && status !== 'waiting';
 
   return (
-    <div className="min-h-screen bg-[#0d121a] text-slate-100 flex flex-col font-sans select-none overflow-x-hidden">
+    <div className="min-h-dvh bg-[#0d121a] text-slate-100 flex flex-col font-sans select-none">
       {/* Navigation Header */}
       <Navbar
         roomCode={roomCode}
@@ -176,7 +176,7 @@ export function App() {
       />
 
       {/* Main View Area */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 lg:p-6 w-full max-w-7xl mx-auto">
+      <main className="flex-1 flex flex-col items-center justify-start sm:justify-center p-2 sm:p-4 lg:p-6 w-full max-w-7xl mx-auto">
         {!roomCode && mode !== 'local' ? (
           <Lobby
             playerName={myPlayerName}
@@ -187,9 +187,9 @@ export function App() {
             onOpenAbout={() => setIsAboutOpen(true)}
           />
         ) : (
-          <div className="w-full flex flex-col lg:flex-row items-center lg:items-start justify-center gap-3 sm:gap-6 animate-fadeIn">
+          <div className="w-full flex flex-col lg:flex-row items-center lg:items-start justify-center gap-2 sm:gap-6">
             {/* Left Column: Chess Board Area */}
-            <div className="w-full flex-1 max-w-[min(100vw-16px,500px)] sm:max-w-[480px] lg:max-w-[500px] flex flex-col items-center">
+            <div className="w-full flex-1 max-w-[min(100vw-16px,calc(100dvh-270px),500px)] sm:max-w-[480px] lg:max-w-[500px] flex flex-col items-center">
               {/* Check Alert Banner */}
               {isCheck && status === 'active' && (
                 <div className="w-full mb-1.5 bg-red-500/20 border border-red-500/40 rounded-xl px-3 py-1 flex items-center justify-center gap-1.5 text-xs text-red-300 font-semibold animate-pulse">
@@ -221,7 +221,10 @@ export function App() {
               />
 
               {/* Mobile Game Controls Bar (Directly beneath board on mobile) */}
-              <div className="w-full mt-2 lg:hidden bg-[#141b26] border border-[#232f41] rounded-xl p-2 shadow-lg">
+              <div
+                className="w-full mt-2 lg:hidden bg-[#141b26] border border-[#232f41] rounded-xl p-2.5 isolate"
+                style={{ contain: 'paint', transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}
+              >
                 <div className="flex items-center justify-between mb-2 px-1 text-xs">
                   <span className="text-slate-400 text-[11px]">Status</span>
                   <span

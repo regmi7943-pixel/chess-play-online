@@ -5,13 +5,27 @@
   color-scheme: dark;
 }
 
-body {
+html, body {
   margin: 0;
   padding: 0;
-  background-color: #0f141c;
+  background-color: #0d121a;
   color: #f1f5f9;
-  min-height: 100vh;
-  overflow-x: hidden;
+  min-height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent Android Chrome / Brave compositor tearing and texture corruption */
+.isolate-layer {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: paint layout;
 }
 
 /* Custom scrollbars */

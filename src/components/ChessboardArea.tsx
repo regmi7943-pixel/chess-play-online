@@ -153,7 +153,7 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = React.memo(({
   );
 
   return (
-    <div className="flex flex-col items-center w-full max-w-[min(100vw-16px,500px)] sm:max-w-[480px] lg:max-w-[500px] mx-auto select-none">
+    <div className="flex flex-col items-center w-full max-w-[min(100vw-16px,calc(100dvh-270px),500px)] sm:max-w-[480px] lg:max-w-[500px] mx-auto select-none isolate">
       {/* Top Player Info Bar */}
       <div className="w-full flex items-center justify-between bg-[#141b26] border border-[#232f41] rounded-t-xl px-2.5 sm:px-3.5 py-1.5 sm:py-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -206,7 +206,7 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = React.memo(({
         {/* Top Clock */}
         <div
           className={`flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg font-mono text-xs sm:text-sm font-bold border transition-colors ${
-            turn === topColor && status === 'active'
+            turn === topColor && status === 'active' && timeControl > 0
               ? topTime <= 30
                 ? 'bg-red-950/80 text-red-300 border-red-500 animate-pulse'
                 : 'bg-amber-950/60 text-amber-300 border-amber-500/70'
@@ -220,8 +220,14 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = React.memo(({
 
       {/* Board Container with Touch Optimization */}
       <div
-        className="w-full aspect-square bg-[#0f141c] border-x border-[#232f41] p-1 flex items-center justify-center relative shadow-xl"
-        style={{ touchAction: 'none' }}
+        className="w-full aspect-square bg-[#0f141c] border-x border-[#232f41] p-1 flex items-center justify-center relative isolate"
+        style={{
+          touchAction: 'none',
+          transform: 'translateZ(0)',
+          WebkitTransform: 'translateZ(0)',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           if (premove) onClearPremove();
@@ -235,7 +241,7 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = React.memo(({
         {premove && (
           <div
             onClick={onClearPremove}
-            className="absolute bottom-2 left-2 z-20 bg-blue-600/90 text-white text-[10px] font-semibold px-2 py-1 rounded-md shadow-md cursor-pointer flex items-center gap-1 backdrop-blur-sm animate-fadeIn"
+            className="absolute bottom-2 left-2 z-20 bg-blue-600 text-white text-[10px] font-semibold px-2 py-1 rounded-md shadow-md cursor-pointer flex items-center gap-1"
           >
             <Zap className="w-3 h-3 fill-current" />
             <span>Premove set (tap to cancel)</span>
@@ -319,7 +325,7 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = React.memo(({
         {/* Bottom Clock */}
         <div
           className={`flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg font-mono text-xs sm:text-sm font-bold border transition-colors ${
-            turn === bottomColor && status === 'active'
+            turn === bottomColor && status === 'active' && timeControl > 0
               ? bottomTime <= 30
                 ? 'bg-red-950/80 text-red-300 border-red-500 animate-pulse'
                 : 'bg-amber-950/60 text-amber-300 border-amber-500/70'

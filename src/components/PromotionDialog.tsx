@@ -19,8 +19,8 @@ export const PromotionDialog: React.FC<PromotionDialogProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
-      <div className="bg-[#141b26] border border-[#2b3a4f] rounded-2xl p-5 max-w-xs w-full text-center shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+      <div className="bg-[#141b26] border border-[#2b3a4f] rounded-2xl p-5 max-w-xs w-full text-center">
         <h3 className="text-base font-bold text-white mb-1">Promote Pawn</h3>
         <p className="text-xs text-slate-400 mb-4">Choose a piece</p>
 

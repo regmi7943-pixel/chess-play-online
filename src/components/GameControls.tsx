@@ -133,7 +133,7 @@ export const GameControls: React.FC<GameControlsProps> = React.memo(({
                 onClick={onUndo}
                 disabled={!canUndo}
                 title="Undo last move"
-                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-35 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:scale-[0.98]"
+                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-35 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:bg-[#283549]"
               >
                 <Undo2 className="w-3.5 h-3.5 text-amber-400" />
                 <span>Undo</span>
@@ -143,7 +143,7 @@ export const GameControls: React.FC<GameControlsProps> = React.memo(({
                 onClick={onRedo}
                 disabled={!canRedo}
                 title="Redo next move"
-                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-35 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:scale-[0.98]"
+                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-35 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:bg-[#283549]"
               >
                 <Redo2 className="w-3.5 h-3.5 text-amber-400" />
                 <span>Redo</span>
@@ -152,7 +152,7 @@ export const GameControls: React.FC<GameControlsProps> = React.memo(({
               <button
                 onClick={onFlipBoard}
                 title="Flip board orientation"
-                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:scale-[0.98]"
+                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:bg-[#283549]"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Flip</span>
@@ -168,7 +168,7 @@ export const GameControls: React.FC<GameControlsProps> = React.memo(({
                 onRequestRematch && (
                   <button
                     onClick={onRequestRematch}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white transition-colors active:scale-[0.98]"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white transition-colors active:bg-[#283549]"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Play Again</span>
@@ -178,7 +178,7 @@ export const GameControls: React.FC<GameControlsProps> = React.memo(({
                 onAcceptRematch && (
                   <button
                     onClick={onAcceptRematch}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors active:scale-[0.98] animate-pulse"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors active:bg-[#283549] animate-pulse"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Accept Rematch</span>
@@ -189,7 +189,7 @@ export const GameControls: React.FC<GameControlsProps> = React.memo(({
                   <button
                     onClick={onRequestRematch}
                     disabled={rematchOfferedBy === myColor}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-400 text-xs font-semibold text-white transition-colors active:scale-[0.98]"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-400 text-xs font-semibold text-white transition-colors active:bg-[#283549]"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>{rematchOfferedBy === myColor ? 'Offered' : 'Rematch'}</span>

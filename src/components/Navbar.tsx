@@ -38,7 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="w-full bg-[#141b26]/90 backdrop-blur-md border-b border-[#243042] sticky top-0 z-40 px-4 py-3">
+    <header className="w-full bg-[#141b26] border-b border-[#243042] sticky top-0 z-40 px-3 sm:px-4 py-2 sm:py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={(roomCode || mode === 'local') ? onLeaveRoom : undefined}>
