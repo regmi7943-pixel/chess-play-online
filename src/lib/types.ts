@@ -43,6 +43,8 @@ export interface MoveRecord {
   captured?: string;
   color: 'w' | 'b';
   fen: string;
+  whiteTime?: number;
+  blackTime?: number;
 }
 
 export interface RoomPresence {

@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { Flag, Handshake, RotateCcw, Share2, Check, AlertTriangle, RefreshCw, Trophy, ArrowLeft } from 'lucide-react';
+import {
+  Flag,
+  Handshake,
+  RotateCcw,
+  Share2,
+  Check,
+  AlertTriangle,
+  RefreshCw,
+  Trophy,
+  ArrowLeft,
+  Undo2,
+  Redo2,
+} from 'lucide-react';
 import type { PlayerColor, GameStatus, GameMode } from '../lib/types';
 
 interface GameControlsProps {
@@ -9,6 +21,11 @@ interface GameControlsProps {
   mode?: GameMode;
   drawOfferedBy: PlayerColor | null;
   rematchOfferedBy?: PlayerColor | null;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  allowUndo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onResign: () => void;
   onOfferDraw: () => void;
   onAcceptDraw: () => void;
@@ -20,13 +37,18 @@ interface GameControlsProps {
   onReopenModal?: () => void;
 }
 
-export const GameControls: React.FC<GameControlsProps> = ({
+export const GameControls: React.FC<GameControlsProps> = React.memo(({
   status,
   myColor,
   roomCode,
   mode = 'online',
   drawOfferedBy,
   rematchOfferedBy,
+  canUndo = false,
+  canRedo = false,
+  allowUndo = true,
+  onUndo,
+  onRedo,
   onResign,
   onOfferDraw,
   onAcceptDraw,
@@ -50,9 +72,10 @@ export const GameControls: React.FC<GameControlsProps> = ({
   };
 
   const isGameOver = status !== 'active' && status !== 'waiting';
+  const showUndoRedoRow = mode === 'local' || allowUndo;
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-2">
       {/* Draw Offer Notification */}
       {drawOfferedBy && drawOfferedBy !== myColor && !isGameOver && (
         <div className="bg-blue-500/15 border border-blue-500/40 rounded-xl p-3 flex items-center justify-between gap-2 animate-pulse">
@@ -102,19 +125,44 @@ export const GameControls: React.FC<GameControlsProps> = ({
           </div>
         </div>
       ) : (
-        /* Action buttons row */
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {/* Flip Board */}
-          <button
-            onClick={onFlipBoard}
-            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1c2433] hover:bg-[#253043] border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Flip</span>
-          </button>
+        <>
+          {/* Row 1: Undo / Redo / Flip (when undo is enabled or local mode) */}
+          {showUndoRedoRow && (
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Undo last move"
+                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-35 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:scale-[0.98]"
+              >
+                <Undo2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>Undo</span>
+              </button>
 
+              <button
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="Redo next move"
+                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-35 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:scale-[0.98]"
+              >
+                <Redo2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>Redo</span>
+              </button>
+
+              <button
+                onClick={onFlipBoard}
+                title="Flip board orientation"
+                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-[#1c2433] hover:bg-[#253043] border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors active:scale-[0.98]"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Flip</span>
+              </button>
+            </div>
+          )}
+
+          {/* Row 2: Game state actions */}
           {isGameOver ? (
-            <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {/* Rematch Button */}
               {mode === 'local' ? (
                 onRequestRematch && (
@@ -164,17 +212,40 @@ export const GameControls: React.FC<GameControlsProps> = ({
               {onReturnToLobby && (
                 <button
                   onClick={onReturnToLobby}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-[#2b3a4f] text-xs font-semibold text-slate-200 hover:text-white transition-colors"
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-[#2b3a4f] text-xs font-semibold text-slate-200 hover:text-white transition-colors ${
+                    !onReopenModal ? 'col-span-1' : ''
+                  }`}
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Lobby</span>
                 </button>
               )}
-            </>
+            </div>
           ) : (
-            <>
+            <div
+              className={`grid ${
+                !showUndoRedoRow
+                  ? 'grid-cols-2 sm:grid-cols-4'
+                  : mode === 'local'
+                  ? 'grid-cols-2'
+                  : roomCode
+                  ? 'grid-cols-3'
+                  : 'grid-cols-2'
+              } gap-2`}
+            >
+              {/* If Undo/Redo row was not shown, show Flip here */}
+              {!showUndoRedoRow && (
+                <button
+                  onClick={onFlipBoard}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1c2433] hover:bg-[#253043] border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Flip</span>
+                </button>
+              )}
+
               {/* Share Link */}
-              {roomCode && (
+              {mode === 'online' && roomCode && (
                 <button
                   onClick={copyLink}
                   className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1c2433] hover:bg-[#253043] border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors"
@@ -193,15 +264,17 @@ export const GameControls: React.FC<GameControlsProps> = ({
                 </button>
               )}
 
-              {/* Offer Draw */}
-              <button
-                onClick={onOfferDraw}
-                disabled={status !== 'active' || drawOfferedBy === myColor}
-                className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-40 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors"
-              >
-                <Handshake className="w-3.5 h-3.5" />
-                <span>{drawOfferedBy === myColor ? 'Draw Sent' : 'Draw'}</span>
-              </button>
+              {/* Offer Draw (Online only) */}
+              {mode === 'online' && (
+                <button
+                  onClick={onOfferDraw}
+                  disabled={status !== 'active' || drawOfferedBy === myColor}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1c2433] hover:bg-[#253043] disabled:opacity-40 disabled:cursor-not-allowed border border-[#2b3a4f] text-xs font-medium text-slate-300 hover:text-white transition-colors"
+                >
+                  <Handshake className="w-3.5 h-3.5" />
+                  <span>{drawOfferedBy === myColor ? 'Draw Sent' : 'Draw'}</span>
+                </button>
+              )}
 
               {/* Resign */}
               <button
@@ -212,10 +285,21 @@ export const GameControls: React.FC<GameControlsProps> = ({
                 <Flag className="w-3.5 h-3.5" />
                 <span>Resign</span>
               </button>
-            </>
+
+              {/* Return to Lobby in local mode */}
+              {mode === 'local' && onReturnToLobby && (
+                <button
+                  onClick={onReturnToLobby}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-[#2b3a4f] text-xs font-semibold text-slate-200 hover:text-white transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Lobby</span>
+                </button>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
-};
+});

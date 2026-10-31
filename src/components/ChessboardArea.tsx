@@ -27,7 +27,7 @@ interface ChessboardAreaProps {
   onUpdatePlayerName: (name: string) => void;
 }
 
-export const ChessboardArea: React.FC<ChessboardAreaProps> = ({
+export const ChessboardArea: React.FC<ChessboardAreaProps> = React.memo(({
   fen,
   turn,
   status,
@@ -136,6 +136,22 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = ({
     return styles;
   }, [lastMove, selectedSquare, possibleMoves, premove]);
 
+  const chessboardOptions = useMemo(
+    () => ({
+      position: fen,
+      boardOrientation,
+      onPieceDrop: ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) =>
+        onPieceDrop(sourceSquare as Square, targetSquare as Square | null),
+      onSquareClick: ({ square }: { square: string }) => onSquareClick(square as Square),
+      darkSquareStyle: { backgroundColor: '#3b4c63' },
+      lightSquareStyle: { backgroundColor: '#cbd5e1' },
+      squareStyles: customSquareStyles,
+      animationDurationInMs: 120,
+      showNotation: true,
+    }),
+    [fen, boardOrientation, onPieceDrop, onSquareClick, customSquareStyles]
+  );
+
   return (
     <div className="flex flex-col items-center w-full max-w-[min(100vw-16px,500px)] sm:max-w-[480px] lg:max-w-[500px] mx-auto select-none">
       {/* Top Player Info Bar */}
@@ -212,20 +228,7 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = ({
         }}
       >
         <div className="w-full h-full">
-          <Chessboard
-            options={{
-              position: fen,
-              boardOrientation: boardOrientation,
-              onPieceDrop: ({ sourceSquare, targetSquare }) =>
-                onPieceDrop(sourceSquare as Square, targetSquare as Square | null),
-              onSquareClick: ({ square }) => onSquareClick(square as Square),
-              darkSquareStyle: { backgroundColor: '#3b4c63' },
-              lightSquareStyle: { backgroundColor: '#cbd5e1' },
-              squareStyles: customSquareStyles,
-              animationDurationInMs: 120,
-              showNotation: true,
-            }}
-          />
+          <Chessboard options={chessboardOptions} />
         </div>
 
         {/* Premove Active Notice */}
@@ -329,4 +332,4 @@ export const ChessboardArea: React.FC<ChessboardAreaProps> = ({
       </div>
     </div>
   );
-};
+});

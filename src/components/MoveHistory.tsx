@@ -1,13 +1,26 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Copy, Check, FileText } from 'lucide-react';
+import { Copy, Check, FileText, Undo2, Redo2 } from 'lucide-react';
 import type { MoveRecord } from '../lib/types';
 
 interface MoveHistoryProps {
   history: MoveRecord[];
   fen: string;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  allowUndo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
-export const MoveHistory: React.FC<MoveHistoryProps> = ({ history, fen }) => {
+export const MoveHistory: React.FC<MoveHistoryProps> = React.memo(({
+  history,
+  fen,
+  canUndo = false,
+  canRedo = false,
+  allowUndo = true,
+  onUndo,
+  onRedo,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [copiedPgn, setCopiedPgn] = useState<boolean>(false);
   const [copiedFen, setCopiedFen] = useState<boolean>(false);
@@ -53,7 +66,27 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({ history, fen }) => {
           <FileText className="w-3.5 h-3.5 text-amber-400" />
           <span>Moves ({history.length})</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          {allowUndo && (onUndo || onRedo) && (
+            <div className="flex items-center gap-1 border-r border-[#232f41] pr-1.5">
+              <button
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Undo move"
+                className="p-1 rounded bg-[#1b2433] hover:bg-[#253244] disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white transition-colors"
+              >
+                <Undo2 className="w-3 h-3 text-amber-400" />
+              </button>
+              <button
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="Redo move"
+                className="p-1 rounded bg-[#1b2433] hover:bg-[#253244] disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white transition-colors"
+              >
+                <Redo2 className="w-3 h-3 text-amber-400" />
+              </button>
+            </div>
+          )}
           <button
             onClick={copyPGN}
             title="Copy PGN"
@@ -100,4 +133,4 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({ history, fen }) => {
       </div>
     </div>
   );
-};
+});

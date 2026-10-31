@@ -18,6 +18,7 @@ export function App() {
   const [timeControl, setTimeControl] = useState<number>(600);
   const [colorPref, setColorPref] = useState<'white' | 'black' | 'random'>('white');
   const [allowPremoves, setAllowPremoves] = useState<boolean>(true);
+  const [allowUndo, setAllowUndo] = useState<boolean>(true);
   const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'moves' | 'chat'>('moves');
   const [showMobilePanel, setShowMobilePanel] = useState<boolean>(false);
@@ -68,6 +69,11 @@ export function App() {
     boardOrientation,
     captured,
     isCheck,
+    allowUndo: gameAllowUndo,
+    canUndo,
+    canRedo,
+    undoMove,
+    redoMove,
     onPieceDrop,
     onSquareClick,
     completePromotion,
@@ -90,6 +96,7 @@ export function App() {
     initialTimeControl: timeControl,
     initialColorPreference: colorPref,
     initialEnablePremoves: allowPremoves,
+    initialAllowUndo: allowUndo,
   });
 
   const [dismissedGameOver, setDismissedGameOver] = useState<boolean>(false);
@@ -100,13 +107,12 @@ export function App() {
     }
   }, [status]);
 
-  useEffect(() => {
-    if (typeof gameTimeControl === 'number' && gameTimeControl !== timeControl) {
-      setTimeControl(gameTimeControl);
-    }
-  }, [gameTimeControl, timeControl]);
-
-  const handleCreateOnlineGame = (tc: number, color: 'white' | 'black' | 'random', premoves: boolean) => {
+  const handleCreateOnlineGame = (
+    tc: number,
+    color: 'white' | 'black' | 'random',
+    premoves: boolean,
+    undo: boolean
+  ) => {
     leaveGame();
     setDismissedGameOver(false);
     const randomCode = 'CP-' + Math.floor(1000 + Math.random() * 9000);
@@ -115,6 +121,7 @@ export function App() {
     setTimeControl(tc);
     setColorPref(color);
     setAllowPremoves(premoves);
+    setAllowUndo(undo);
     setMode('online');
     setRoomCode(randomCode);
 
@@ -142,6 +149,7 @@ export function App() {
     setMode('local');
     setRoomCode(null);
     setTimeControl(0);
+    setAllowUndo(true);
   };
 
   const handleLeaveRoom = () => {
@@ -240,6 +248,11 @@ export function App() {
                   mode={mode}
                   drawOfferedBy={drawOfferedBy}
                   rematchOfferedBy={rematchOfferedBy}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  allowUndo={gameAllowUndo}
+                  onUndo={undoMove}
+                  onRedo={redoMove}
                   onResign={resignGame}
                   onOfferDraw={offerDraw}
                   onAcceptDraw={acceptDraw}
@@ -296,6 +309,11 @@ export function App() {
                   mode={mode}
                   drawOfferedBy={drawOfferedBy}
                   rematchOfferedBy={rematchOfferedBy}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  allowUndo={gameAllowUndo}
+                  onUndo={undoMove}
+                  onRedo={redoMove}
                   onResign={resignGame}
                   onOfferDraw={offerDraw}
                   onAcceptDraw={acceptDraw}
@@ -340,7 +358,15 @@ export function App() {
 
                 <div className="flex-1 min-h-[220px]">
                   {activeTab === 'moves' ? (
-                    <MoveHistory history={history} fen={fen} />
+                    <MoveHistory
+                      history={history}
+                      fen={fen}
+                      canUndo={canUndo}
+                      canRedo={canRedo}
+                      allowUndo={gameAllowUndo}
+                      onUndo={undoMove}
+                      onRedo={redoMove}
+                    />
                   ) : (
                     <ChatBox messages={messages} onSendMessage={sendChatMessage} />
                   )}

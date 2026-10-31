@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
-import { Play, Users, Clock, ArrowRight, User, Swords, Link2, Dices, Circle, CircleDot, Zap } from 'lucide-react';
+import { Play, Users, Clock, ArrowRight, User, Dices, Circle, CircleDot, Zap, Undo2, Swords, Link2 } from 'lucide-react';
 
 interface LobbyProps {
   playerName: string;
   onUpdatePlayerName: (name: string) => void;
-  onCreateOnlineGame: (timeControl: number, colorPref: 'white' | 'black' | 'random', enablePremoves: boolean) => void;
+  onCreateOnlineGame: (
+    timeControl: number,
+    colorPref: 'white' | 'black' | 'random',
+    enablePremoves: boolean,
+    enableUndo: boolean
+  ) => void;
   onJoinOnlineGame: (roomCode: string) => void;
   onStartLocalGame: () => void;
   onOpenAbout: () => void;
@@ -20,6 +25,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   const [selectedTimeControl, setSelectedTimeControl] = useState<number>(600);
   const [selectedColor, setSelectedColor] = useState<'white' | 'black' | 'random'>('white');
   const [enablePremoves, setEnablePremoves] = useState<boolean>(true);
+  const [enableUndo, setEnableUndo] = useState<boolean>(true);
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
   const [nameInput, setNameInput] = useState<string>(playerName);
 
@@ -35,7 +41,7 @@ export const Lobby: React.FC<LobbyProps> = ({
     if (nameInput.trim()) {
       onUpdatePlayerName(nameInput.trim());
     }
-    onCreateOnlineGame(selectedTimeControl, selectedColor, enablePremoves);
+    onCreateOnlineGame(selectedTimeControl, selectedColor, enablePremoves, enableUndo);
   };
 
   const handleJoin = (e: React.FormEvent) => {
@@ -161,7 +167,7 @@ export const Lobby: React.FC<LobbyProps> = ({
             </div>
 
             {/* Premove Toggle */}
-            <div className="mb-5 sm:mb-6 flex items-center justify-between p-2.5 rounded-xl bg-[#1b2433] border border-[#273447]">
+            <div className="mb-2.5 sm:mb-3 flex items-center justify-between p-2.5 rounded-xl bg-[#1b2433] border border-[#273447]">
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-400" />
                 <div>
@@ -174,6 +180,26 @@ export const Lobby: React.FC<LobbyProps> = ({
                   type="checkbox"
                   checked={enablePremoves}
                   onChange={(e) => setEnablePremoves(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-[#253244] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+              </label>
+            </div>
+
+            {/* Allow Undo / Redo Toggle */}
+            <div className="mb-5 sm:mb-6 flex items-center justify-between p-2.5 rounded-xl bg-[#1b2433] border border-[#273447]">
+              <div className="flex items-center gap-2">
+                <Undo2 className="w-4 h-4 text-amber-400" />
+                <div>
+                  <div className="text-xs font-medium text-slate-200">Allow Undo / Redo</div>
+                  <div className="text-[10px] text-slate-400">Take back and replay moves during match</div>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableUndo}
+                  onChange={(e) => setEnableUndo(e.target.checked)}
                   className="sr-only peer"
                 />
                 <div className="w-9 h-5 bg-[#253244] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
@@ -237,7 +263,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               </div>
             </div>
             <p className="text-xs text-slate-400 mb-3 sm:mb-4 leading-relaxed">
-              Two-player chess on this device without connecting online.
+              Two-player chess on this device without connecting online. Unlimited time & takebacks.
             </p>
             <button
               onClick={onStartLocalGame}

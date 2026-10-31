@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { supabase, getOrCreatePlayerSession } from '../lib/supabase';
 import { soundManager } from '../lib/sounds';
@@ -32,12 +32,23 @@ interface UseChessGameProps {
   initialTimeControl?: number;
   initialColorPreference?: 'white' | 'black' | 'random';
   initialEnablePremoves?: boolean;
+  initialAllowUndo?: boolean;
 }
 
 export interface Premove {
   from: Square;
   to: Square;
   promotion?: string;
+}
+
+export interface RedoItem {
+  from: Square;
+  to: Square;
+  promotion?: string;
+  san: string;
+  record: MoveRecord;
+  whiteTime?: number;
+  blackTime?: number;
 }
 
 export function useChessGame({
@@ -47,6 +58,7 @@ export function useChessGame({
   initialTimeControl = 600,
   initialColorPreference = 'white',
   initialEnablePremoves = true,
+  initialAllowUndo = true,
 }: UseChessGameProps) {
   const chessRef = useRef<Chess>(new Chess());
   const [fen, setFen] = useState<string>(chessRef.current.fen());
@@ -66,13 +78,17 @@ export function useChessGame({
   const [spectatorCount, setSpectatorCount] = useState<number>(0);
 
   // Time controls
-  const [timeControl, setTimeControl] = useState<number>(initialTimeControl);
-  const [whiteTime, setWhiteTime] = useState<number>(initialTimeControl);
-  const [blackTime, setBlackTime] = useState<number>(initialTimeControl);
+  const [timeControl, setTimeControl] = useState<number>(mode === 'local' ? 0 : initialTimeControl);
+  const [whiteTime, setWhiteTime] = useState<number>(mode === 'local' ? 0 : initialTimeControl);
+  const [blackTime, setBlackTime] = useState<number>(mode === 'local' ? 0 : initialTimeControl);
 
-  // Pre-move feature
+  // Pre-move & Undo features
   const [enablePremoves, setEnablePremoves] = useState<boolean>(initialEnablePremoves);
+  const [allowUndo, setAllowUndo] = useState<boolean>(initialAllowUndo);
   const [premove, setPremove] = useState<Premove | null>(null);
+  const [redoStack, setRedoStack] = useState<RedoItem[]>([]);
+  const redoStackRef = useRef<RedoItem[]>([]);
+  redoStackRef.current = redoStack;
 
   // Move history
   const [history, setHistory] = useState<MoveRecord[]>([]);
@@ -142,8 +158,23 @@ export function useChessGame({
     isSpectatorRef.current = isSpectator;
   }, [isSpectator]);
 
+  const allowUndoRef = useRef<boolean>(allowUndo);
+  allowUndoRef.current = allowUndo;
+
   useEffect(() => {
-    if (mode === 'local' || (initialIsHost && status === 'waiting')) {
+    setAllowUndo(initialAllowUndo);
+    allowUndoRef.current = initialAllowUndo;
+  }, [initialAllowUndo]);
+
+  useEffect(() => {
+    if (mode === 'local') {
+      setTimeControl(0);
+      timeControlRef.current = 0;
+      setWhiteTime(0);
+      whiteTimeRef.current = 0;
+      setBlackTime(0);
+      blackTimeRef.current = 0;
+    } else if (initialIsHost && status === 'waiting') {
       setTimeControl(initialTimeControl);
       timeControlRef.current = initialTimeControl;
       setWhiteTime(initialTimeControl);
@@ -168,6 +199,8 @@ export function useChessGame({
   const refreshGameStateRef = useRef<() => void>(() => {});
   const resetGameRef = useRef<(swap?: boolean, tcOverride?: number) => void>(() => {});
   const applyRematchRef = useRef<(whiteId: string, blackId: string, tc: number, initiatorPreviousColor?: PlayerColor) => void>(() => {});
+  const undoMoveRef = useRef<(broadcast?: boolean) => boolean>(() => false);
+  const redoMoveRef = useRef<(broadcast?: boolean) => boolean>(() => false);
 
   // Calculate captured pieces
   const getCapturedPieces = useCallback((): { white: CapturedPieces; black: CapturedPieces; scoreDiff: number } => {
@@ -225,6 +258,9 @@ export function useChessGame({
       scoreDiff: whitePoints - blackPoints,
     };
   }, []);
+
+  const capturedPieces = useMemo(() => getCapturedPieces(), [fen, getCapturedPieces]);
+  const isCheckState = useMemo(() => chessRef.current.isCheck(), [fen]);
 
   // Update game state from chess.js
   const refreshGameState = useCallback(() => {
@@ -296,8 +332,12 @@ export function useChessGame({
           captured: moveResult.captured,
           color: moveResult.color,
           fen: chess.fen(),
+          whiteTime: whiteTimeRef.current,
+          blackTime: blackTimeRef.current,
         };
 
+        setRedoStack([]);
+        redoStackRef.current = [];
         setHistory((prev) => [...prev, newRecord]);
         setLastMove({ from, to });
         setSelectedSquare(null);
@@ -629,6 +669,8 @@ export function useChessGame({
       setPremove(null);
       setDrawOfferedBy(null);
       setRematchOfferedBy(null);
+      setRedoStack([]);
+      redoStackRef.current = [];
 
       const tc = typeof tcOverride === 'number' ? tcOverride : timeControlRef.current;
       setTimeControl(tc);
@@ -683,6 +725,8 @@ export function useChessGame({
       setPremove(null);
       setDrawOfferedBy(null);
       setRematchOfferedBy(null);
+      setRedoStack([]);
+      redoStackRef.current = [];
 
       setTimeControl(tc);
       timeControlRef.current = tc;
@@ -701,10 +745,200 @@ export function useChessGame({
     [myPlayerId]
   );
 
+  const undoMove = useCallback(
+    (broadcast: boolean = true): boolean => {
+      if (mode === 'online' && !allowUndoRef.current) return false;
+      if (isSpectatorRef.current) return false;
+
+      const chess = chessRef.current;
+      if (historyRef.current.length === 0) return false;
+
+      const undone = chess.undo();
+      if (!undone) return false;
+
+      const currentHistory = historyRef.current;
+      const lastRecord = currentHistory[currentHistory.length - 1];
+      const newHistory = currentHistory.slice(0, -1);
+
+      const redoItem: RedoItem = {
+        from: undone.from as Square,
+        to: undone.to as Square,
+        promotion: undone.promotion,
+        san: undone.san,
+        record: lastRecord,
+        whiteTime: whiteTimeRef.current,
+        blackTime: blackTimeRef.current,
+      };
+
+      setRedoStack((prev) => [...prev, redoItem]);
+      redoStackRef.current = [...redoStackRef.current, redoItem];
+
+      setHistory(newHistory);
+      historyRef.current = newHistory;
+
+      const newFen = chess.fen();
+      setFen(newFen);
+      const newTurn = chess.turn() === 'w' ? 'white' : 'black';
+      setTurn(newTurn);
+
+      if (newHistory.length > 0) {
+        const prevMove = newHistory[newHistory.length - 1];
+        setLastMove({ from: prevMove.from, to: prevMove.to });
+      } else {
+        setLastMove(null);
+      }
+
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+      setPremove(null);
+      setPendingPromotion(null);
+
+      // Restore clocks if recorded and timeControl > 0
+      if (
+        timeControlRef.current > 0 &&
+        typeof lastRecord.whiteTime === 'number' &&
+        typeof lastRecord.blackTime === 'number'
+      ) {
+        setWhiteTime(lastRecord.whiteTime);
+        whiteTimeRef.current = lastRecord.whiteTime;
+        setBlackTime(lastRecord.blackTime);
+        blackTimeRef.current = lastRecord.blackTime;
+      }
+
+      if (chess.isGameOver()) {
+        refreshGameStateRef.current();
+      } else {
+        setStatus('active');
+        setWinner(null);
+        setStatusReason('');
+      }
+
+      soundManager.playMove();
+
+      if (broadcast && channelRef.current && mode === 'online') {
+        logSync(`[Undo] Broadcasting undo_move (undone SAN: ${undone.san})`);
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'undo_move',
+          payload: {
+            fen: newFen,
+            history: newHistory,
+            redoItem,
+            undoneSan: undone.san,
+            sentBy: myColorRef.current,
+            sentAt: Date.now(),
+          },
+        });
+
+        const sender = myPlayerNameRef.current;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Math.random().toString(36).substring(2, 9),
+            senderName: 'System',
+            text: `${sender} undid move ${undone.san}`,
+            timestamp: Date.now(),
+            isSystem: true,
+          },
+        ]);
+      }
+
+      return true;
+    },
+    [mode]
+  );
+
+  const redoMove = useCallback(
+    (broadcast: boolean = true): boolean => {
+      if (mode === 'online' && !allowUndoRef.current) return false;
+      if (isSpectatorRef.current) return false;
+
+      if (redoStackRef.current.length === 0) return false;
+
+      const currentRedoStack = redoStackRef.current;
+      const itemToRedo = currentRedoStack[currentRedoStack.length - 1];
+      const newRedoStack = currentRedoStack.slice(0, -1);
+
+      const chess = chessRef.current;
+      let moveRes = null;
+      try {
+        moveRes = chess.move({
+          from: itemToRedo.from,
+          to: itemToRedo.to,
+          promotion: itemToRedo.promotion || 'q',
+        });
+      } catch (err) {
+        console.warn('Failed to replay move in chess.js:', err);
+      }
+
+      if (!moveRes) return false;
+
+      setRedoStack(newRedoStack);
+      redoStackRef.current = newRedoStack;
+
+      const newHistory = [...historyRef.current, itemToRedo.record];
+      setHistory(newHistory);
+      historyRef.current = newHistory;
+
+      const newFen = chess.fen();
+      setFen(newFen);
+      const newTurn = chess.turn() === 'w' ? 'white' : 'black';
+      setTurn(newTurn);
+
+      setLastMove({ from: itemToRedo.from, to: itemToRedo.to });
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+      setPremove(null);
+      setPendingPromotion(null);
+
+      if (chess.isCheck()) {
+        soundManager.playCheck();
+      } else if (moveRes.captured) {
+        soundManager.playCapture();
+      } else {
+        soundManager.playMove();
+      }
+
+      refreshGameStateRef.current();
+
+      if (broadcast && channelRef.current && mode === 'online') {
+        logSync(`[Redo] Broadcasting redo_move (redone SAN: ${itemToRedo.san})`);
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'redo_move',
+          payload: {
+            fen: newFen,
+            history: newHistory,
+            redoneSan: itemToRedo.san,
+            sentBy: myColorRef.current,
+            sentAt: Date.now(),
+          },
+        });
+
+        const sender = myPlayerNameRef.current;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Math.random().toString(36).substring(2, 9),
+            senderName: 'System',
+            text: `${sender} redid move ${itemToRedo.san}`,
+            timestamp: Date.now(),
+            isSystem: true,
+          },
+        ]);
+      }
+
+      return true;
+    },
+    [mode]
+  );
+
   tryExecutePremoveRef.current = tryExecutePremove;
   refreshGameStateRef.current = refreshGameState;
   resetGameRef.current = resetGame;
   applyRematchRef.current = applyRematch;
+  undoMoveRef.current = undoMove;
+  redoMoveRef.current = redoMove;
 
   const acceptRematch = useCallback(() => {
     if (mode === 'local') {
@@ -778,16 +1012,19 @@ export function useChessGame({
     setPremove(null);
     setDrawOfferedBy(null);
     setRematchOfferedBy(null);
+    setRedoStack([]);
+    redoStackRef.current = [];
     setOpponent(null);
     setSpectatorCount(0);
     setIsSpectator(false);
-    setWhiteTime(timeControlRef.current);
-    setBlackTime(timeControlRef.current);
+    const tc = mode === 'local' ? 0 : timeControlRef.current;
+    setWhiteTime(tc);
+    setBlackTime(tc);
     if (channelRef.current) {
       channelRef.current.unsubscribe();
       channelRef.current = null;
     }
-  }, []);
+  }, [mode]);
 
   const toggleBoardOrientation = useCallback(() => {
     setBoardOrientation((prev) => (prev === 'white' ? 'black' : 'white'));
@@ -801,7 +1038,7 @@ export function useChessGame({
 
   // Timer interval effect
   useEffect(() => {
-    if (status !== 'active' || timeControl === 0) {
+    if (mode === 'local' || status !== 'active' || timeControl === 0) {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       return;
     }
@@ -835,7 +1072,7 @@ export function useChessGame({
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [status, turn, timeControl]);
+  }, [status, turn, timeControl, mode]);
 
   // STABLE Supabase Channel Subscription (ONLY depends on roomCode & mode)
   useEffect(() => {
@@ -987,9 +1224,10 @@ export function useChessGame({
           guestColor: guestCol,
           fen: chessRef.current.fen(),
           timeControl: timeControlRef.current,
-          whiteTime: whiteTimeRef.current,
-          blackTime: blackTimeRef.current,
+          whiteTime: timeControlRef.current,
+          blackTime: timeControlRef.current,
           enablePremoves: enablePremovesRef.current,
+          allowUndo: allowUndoRef.current,
           history: historyRef.current,
           sentAt: Date.now(),
         },
@@ -1030,6 +1268,10 @@ export function useChessGame({
       if (typeof payload.whiteTime === 'number') setWhiteTime(payload.whiteTime);
       if (typeof payload.blackTime === 'number') setBlackTime(payload.blackTime);
       if (typeof payload.enablePremoves === 'boolean') setEnablePremoves(payload.enablePremoves);
+      if (typeof payload.allowUndo === 'boolean') {
+        setAllowUndo(payload.allowUndo);
+        allowUndoRef.current = payload.allowUndo;
+      }
       if (payload.history) setHistory(payload.history);
 
       setStatus('active');
@@ -1107,6 +1349,114 @@ export function useChessGame({
       applyRematchRef.current(whitePlayerId, blackPlayerId, tc, initiatorPreviousColor);
     });
 
+    // 8a. Undo broadcast listener
+    channel.on('broadcast', { event: 'undo_move' }, (event) => {
+      const { fen: syncFen, history: syncHist, redoItem, undoneSan, sentBy } = event.payload || {};
+      logSync(`[Undo] Received undo_move from ${sentBy} (${undoneSan || ''})`);
+
+      const chess = chessRef.current;
+      chess.undo();
+
+      if (syncFen) {
+        chess.load(syncFen);
+        setFen(syncFen);
+      }
+      if (syncHist) {
+        setHistory(syncHist);
+        historyRef.current = syncHist;
+        if (syncHist.length > 0) {
+          const prev = syncHist[syncHist.length - 1];
+          setLastMove({ from: prev.from, to: prev.to });
+        } else {
+          setLastMove(null);
+        }
+      }
+      if (redoItem) {
+        setRedoStack((prev) => [...prev, redoItem]);
+        redoStackRef.current = [...redoStackRef.current, redoItem];
+      }
+
+      setTurn(chess.turn() === 'w' ? 'white' : 'black');
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+      setPremove(null);
+      setPendingPromotion(null);
+
+      if (chess.isGameOver()) {
+        refreshGameStateRef.current();
+      } else {
+        setStatus('active');
+        setWinner(null);
+        setStatusReason('');
+      }
+
+      soundManager.playMove();
+
+      const oppName = opponentRef.current?.name || (sentBy === 'white' ? 'White' : 'Black');
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substring(2, 9),
+          senderName: 'System',
+          text: `${oppName} undid move ${undoneSan || ''}`,
+          timestamp: Date.now(),
+          isSystem: true,
+        },
+      ]);
+    });
+
+    // 8b. Redo broadcast listener
+    channel.on('broadcast', { event: 'redo_move' }, (event) => {
+      const { fen: syncFen, history: syncHist, redoneSan, sentBy } = event.payload || {};
+      logSync(`[Redo] Received redo_move from ${sentBy} (${redoneSan || ''})`);
+
+      const chess = chessRef.current;
+      if (redoStackRef.current.length > 0) {
+        const itemToRedo = redoStackRef.current[redoStackRef.current.length - 1];
+        try {
+          chess.move({ from: itemToRedo.from, to: itemToRedo.to, promotion: itemToRedo.promotion || 'q' });
+        } catch {
+          if (syncFen) chess.load(syncFen);
+        }
+        const newRedoStack = redoStackRef.current.slice(0, -1);
+        setRedoStack(newRedoStack);
+        redoStackRef.current = newRedoStack;
+      } else if (syncFen) {
+        chess.load(syncFen);
+      }
+
+      if (syncFen) setFen(syncFen);
+      if (syncHist) {
+        setHistory(syncHist);
+        historyRef.current = syncHist;
+        if (syncHist.length > 0) {
+          const last = syncHist[syncHist.length - 1];
+          setLastMove({ from: last.from, to: last.to });
+        }
+      }
+
+      setTurn(chess.turn() === 'w' ? 'white' : 'black');
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+      setPremove(null);
+      setPendingPromotion(null);
+
+      soundManager.playMove();
+      refreshGameStateRef.current();
+
+      const oppName = opponentRef.current?.name || (sentBy === 'white' ? 'White' : 'Black');
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substring(2, 9),
+          senderName: 'System',
+          text: `${oppName} redid move ${redoneSan || ''}`,
+          timestamp: Date.now(),
+          isSystem: true,
+        },
+      ]);
+    });
+
     // 9. State Sync (spectator or refresh fallback)
     channel.on('broadcast', { event: 'sync_request' }, () => {
       logSync(`[Sync] Received 'sync_request', broadcasting current match state`);
@@ -1122,6 +1472,7 @@ export function useChessGame({
           history: historyRef.current,
           hostColor: myColorRef.current,
           enablePremoves: enablePremovesRef.current,
+          allowUndo: allowUndoRef.current,
         },
       });
     });
@@ -1136,6 +1487,7 @@ export function useChessGame({
         history: syncHist,
         hostColor,
         enablePremoves: syncPremoves,
+        allowUndo: syncAllowUndo,
       } = event.payload;
 
       try {
@@ -1159,6 +1511,10 @@ export function useChessGame({
         if (typeof syncPremoves === 'boolean') {
           setEnablePremoves(syncPremoves);
           enablePremovesRef.current = syncPremoves;
+        }
+        if (typeof syncAllowUndo === 'boolean') {
+          setAllowUndo(syncAllowUndo);
+          allowUndoRef.current = syncAllowUndo;
         }
 
         if (hostColor && !isHostRef.current) {
@@ -1304,8 +1660,13 @@ export function useChessGame({
     drawOfferedBy,
     rematchOfferedBy,
     boardOrientation,
-    captured: getCapturedPieces(),
-    isCheck: chessRef.current.isCheck(),
+    captured: capturedPieces,
+    isCheck: isCheckState,
+    allowUndo,
+    canUndo: history.length > 0 && (mode === 'local' || allowUndo),
+    canRedo: redoStack.length > 0 && (mode === 'local' || allowUndo),
+    undoMove,
+    redoMove,
     onPieceDrop,
     onSquareClick,
     completePromotion,
